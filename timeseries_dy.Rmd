@@ -1,0 +1,187 @@
+---
+title: "탐색적 자료분석"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Plasma Citrate Concentration 분석
+
+
+본 과제에서는 10명의 환자의 시간별 혈장 농도 데이터를 분석해 시간별로 혈장 농도에 유의미한 차이가 존재하는지 분석할 것이다. 분석은 다음과 같은 과정을 거칠 것이다.
+
+    - 데이터 시각화
+    - 분산의 안정화
+        - Power 이용
+        - 다른 변환 이용
+    - 차이 검정
+        - Notch 이용한 차이 시각화
+        - Paired T-test로 검정
+
+주어진 데이터의 형태는 아래와 같다.
+
+| Patient No. | 8AM | 11AM | 2PM | 5PM | 8PM |
+|-------------|:---:|:----:|:---:|:---:|:---:|
+|1|93|121|112|117|121|
+|2|116|135|114|98|135|
+|3|125|137|119|105|102|
+|4|144|173|148|124|122|
+|5|105|119|125|91|133|
+|6|109|83|109|80|104|
+|7|89|95|88|91|116|
+|8|116|128|122|107|119|
+|9|151|149|141|126|138|
+|10|137|139|125|109|107|
+
+
+
+
+# 자료 시각화
+###- Box plot
+
+각 시간대별로 환자들의 혈장 농도를 Box Plot을 이용해 아래와 같이 시각화해 보았다.
+
+
+```{r boxplot, echo=FALSE}
+plasma<-as.vector(read.table("C:\\Users\\이다현\\Desktop\\PLASMA.DAT"))
+
+names(plasma)<-c('8AM','11AM','2PM','5PM','8PM')
+par(mfrow=c(1,1))
+boxplot(plasma,main='PLASMA')
+
+```
+
+자료를 보면, 평균의 차이가 존재하지만 유의미한 결론에 도달할 수 있는지 정도가 모호하다. 또한 이상값들이 존재하고 분산이 일정하지 않아 분석에 어려움이 있을 것으보 보인다.
+
+#분산 안정화
+
+###- 안정화 필요 여부 확인
+
+
+시간대별 H-spread를 구해 분산을 확인할 수 있다. H-spread는 분산보다 이상값의 영향을 덜 받는 지표로, 그 공식은 다음과 같다.
+
+
+$$\text{H-spread} = \frac{3}{4}(n+1)^{st}  statistic-\frac{1}{4}(n+1)^{st}  statistic$$
+
+
+각 시간대별로 H-spread를 구해서 시간대별로 분산의 차이가 있는지 확인하고, 이를 토대로 안정화 필요의 여부를 결정할 수 있다.
+
+```{r variance}
+Hsp1<-fivenum(plasma$'8AM')[4] - fivenum(plasma$'8AM')[2]
+Hsp2<-fivenum(plasma$'11AM')[4] - fivenum(plasma$'11AM')[2]
+Hsp3<-fivenum(plasma$'2PM')[4] - fivenum(plasma$'2PM')[2]
+Hsp4<-fivenum(plasma$'5PM')[4] - fivenum(plasma$'5PM')[2]
+Hsp5<-fivenum(plasma$'8PM')[4] - fivenum(plasma$'8PM')[2]
+Hsp<-c(Hsp1,Hsp2,Hsp3,Hsp4,Hsp5)
+Hsp
+```
+
+H-spread를 확인해 보면, 분산의 안정화가 필요하다는 것을 알 수 있다.
+
+
+
+
+
+###- Power를 통한 안정화
+
+분산 안정화에 필요한 power를 구하기 위해 구간의 H-spread와 Median들에 로그를 취해 이에 대해 선형 회귀분석을 해보았다.
+
+```{r echo=FALSE}
+M1<-fivenum(plasma$'8AM')[3]
+M2<-fivenum(plasma$'11AM')[3]
+M3<-fivenum(plasma$'2PM')[3]
+M4<-fivenum(plasma$'5PM')[3]
+M5<-fivenum(plasma$'8PM')[3]
+M<-c(M1,M2,M3,M4,M5)
+
+plot(log(M),log(Hsp))
+(RegrLine <- lm(log(Hsp) ~ log(M)) )
+abline(coef(RegrLine))
+1 - coef(RegrLine)[2]
+
+```
+
+회귀선에서 심하게 벗어난 점이 하나 있지만, 우선 회귀선의 계수를 이용해 power를 구해본 결과, 값은 2.79가 나왔다. 2.79는 3과 근접하므로 raw data에 세제곱을 해서 분산 안정화를 시도해 보았다.
+
+```{r echo=FALSE}
+par(mfrow=c(1,2))
+boxplot(plasma^(2.79),main='PLASMA; Stabilized; p=2.79')
+boxplot(plasma^(3),main='PLASMA; Stabilized; p=3')
+```
+
+상자 그림을 그려 시각적으로 확인해 봤을 때 원래 자료에 비해 상자의 길이의 차이가 덜 심해진 것을 볼 수 있다. 또한 power를 3으로 두었을 때와 2.79로 두었을 때 큰 차이가 나지 않아 직관적으로 이해하기 쉽게 하기 위해 세제곱을 취해주는 것이 더 낫다고 볼 수 있다. 하지만 아직도 분산 간 차이가 커 다른 변환이 필요함을 알 수 있다.
+
+###- 다른 변환들
+```{r echo=FALSE}
+par(mfrow=c(1,2))
+boxplot(log(plasma),main='PLASMA; Stabilized; Log')
+boxplot(sin(plasma),main='PLASMA; Stabilized; Sin')
+```
+
+로그변환을 시도해 보았는데 이 때 분산은 세 제곱을 했을 때 보다 차이가 커 보이기 때문에 유의미한 변환으로 볼 수 없다. 그 후 원자료에 sin을 취해 변환을 해 보니 구간마다 분산이 비교적 일정해진 것을 볼 수 있다. Sin변환 한 데이터의 구간별 H-spread를 직접 구해보았다.
+
+```{r}
+
+n.Hsp1<-fivenum(sin(plasma$'8AM'))[4] - fivenum(sin(plasma$'8AM'))[2]
+n.Hsp2<-fivenum(sin(plasma$'11AM'))[4] - fivenum(sin(plasma$'11AM'))[2]
+n.Hsp3<-fivenum(sin(plasma$'2PM'))[4] - fivenum(sin(plasma$'2PM'))[2]
+n.Hsp4<-fivenum(sin(plasma$'5PM'))[4] - fivenum(sin(plasma$'5PM'))[2]
+n.Hsp5<-fivenum(sin(plasma$'8PM'))[4] - fivenum(sin(plasma$'8PM'))[2]
+n.Hsp<-c(n.Hsp1,n.Hsp2,n.Hsp3,n.Hsp4,n.Hsp5)
+n.Hsp
+
+```
+
+결과적으로, 구간별 H-spread의 차이가 매우 근소하게 나타나 성공적으로 분산이 안정화되었다고 볼 수 있다.
+
+
+#시간대별 평균의 차이 확인
+###- Notch 활용
+
+ 원 데이터와 sin변환한 데이터의 상자 그림에 notch를 추가해 구간별 median의 차이가 있는지 살펴보았다.
+ 
+```{r echo=FALSE}
+par(mfrow=c(1,2))
+boxplot(plasma,main='PLASMA', notch=T)
+boxplot(sin(plasma),main='PLASMA; Variance Stabilized; Sin Transformed',notch=T)
+```
+ 
+보다시피, 원자료에는 11AM과 5PM의 notch가 거의 겹치지 않아 median의 차이가 있다고 판단하지만, sin변환된 데이터에는 겹치지 않는 notch가 없기 때문에 시간대별로 혈장 농도의 median의 차이가 있다고 보지 않는다. 하지만 이 상자그림에서의 median의 비교는 각 구간별 median의 차이를 고려할 뿐 같은 사람의 변화라는 점을 고려하지 못한다는 단점이 있다.
+
+###- Paired T-test 활용
+
+Paired T-test를 활용하면,같은 사람의 혈당 농도 변화에 대한 시간별 차이를 알 수 있다. Paired T-test의 검정통계량은 다음과 같다.
+
+$$\bar{D} = \frac{\sum_{i=1}^{n}(X_i-Y_i)}{n}$$
+$$S_d=\sqrt{\frac{\sum{d_i^2}-\frac{(\sum{d_i})^2}{n}}{n-1}}$$
+
+
+$$T=\frac{\bar{D}}{S_D/\sqrt{n}} \ \text{~} \ T_{(n-1)} \ \text{under null hypothesis}$$
+
+```{r echo=FALSE}
+t.test(plasma$'8AM',plasma$'11AM',paired=T)[3]
+t.test(plasma$'8AM',plasma$'2PM',paired=T)[3]
+t.test(plasma$'8AM',plasma$'5PM',paired=T)[3]
+t.test(plasma$'8AM',plasma$'8PM',paired=T)[3]
+t.test(plasma$'11AM',plasma$'2PM',paired=T)[3]
+t.test(plasma$'11AM',plasma$'5PM',paired=T)[3]
+t.test(plasma$'11AM',plasma$'8PM',paired=T)[3]
+t.test(plasma$'2PM',plasma$'5PM',paired=T)[3]
+t.test(plasma$'2PM',plasma$'8PM',paired=T)[3]
+t.test(plasma$'5PM',plasma$'8PM',paired=T)[3]
+
+```
+
+
+두개의 시간대를 골라 각각 t-test를 시행하면, 그 결과로 8AM과 5PM, 11AM과 5PM, 2PM과 5PM, 5PM과 8PM에서 p-valur가 0.05보다 낮아 모평균이 같다는 귀무가설이 기각됨으로써 평균에 차이가 존재한다는 결과가 나왔다.
+
+##결론
+환자들의 혈당 농도는 시간대별로 유의미한 차이가 존재하는데, 이 차이는 8AM과 5PM, 11AM과 5PM, 2PM과 5PM, 5PM과 8PM에 나타나며, 오후 5시 가량에 혈중 농도가 유의미하게 낮아짐을 알 수 있다.
+
+|Time|P-value|
+|:-----:|:-----:|
+|8AM & 5PM|0.02525846|
+|11AM & 5PM|0.001084452|
+|5PM & 8PM|0.003188009|
