@@ -1,0 +1,75 @@
+---
+title: "KOSPI Crawling"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(httr)
+library(urltools)
+library(rvest)
+library(tidyverse)
+
+Sys.setlocale(category = 'LC_ALL', locale = 'C')
+
+```
+
+##User Agent 설정
+먼저 user agent를 확인하고 설정하겠습니다
+```{r echo=FALSE}
+res <- GET(url = 'https://finance.naver.com/sise/sise_index.nhn?code=KOSPI')
+print(x = res)
+print(x = res$request)
+print(x = res$request$options$useragent)
+
+myUA <- "libcurl/7.59.0 r-curl/3.3 httr/1.4.0"
+res <- GET(url = 'https://finance.naver.com/sise/sise_index.nhn?code=KOSPI',
+           user_agent(agent = myUA))
+print(x = res)
+print(x = res$request)
+```
+
+
+
+##Import Table
+URL에서 필요한 표를 불러오는 작업입니다.
+```{r import}
+res %>% 
+  read_html(encoding='euc-kr') %>% 
+  html_node(css = '#contentarea_left > div.box_top_sub > div > div.subtop_sise_detail > table')
+
+tblKOS <- res %>% 
+  read_html(encoding='euc-kr') %>% 
+  html_node(css = 'table.table_kos_index') %>% 
+  html_table(fill = TRUE)
+
+Sys.setlocale(category = 'LC_ALL', locale = 'korean')
+glimpse(x = tblKOS)
+
+
+print(tblKOS)
+view(tblKOS)
+```
+
+##Trimming data
+불러들인 표를 보기 쉽게 다시 정리하는 과정을 거칩니다.
+```{r clean}
+colnames(tblKOS)<-rep(c("X1","X2"),2)
+new<-NULL
+for(i in 1:4){new<-rbind(new,tblKOS[i,1:2])
+new<-rbind(new,tblKOS[i,3:4])}
+newtbl<-new[1:7,]
+rownames(newtbl)<-1:7
+
+as.data.frame(cbind(newtbl[,1],newtbl[,2]))
+newtbl$X2<-newtbl$X2 %>% str_remove_all(pattern = '\n|\t')
+newtbl[7,2]<-newtbl[7,2] %>% str_remove_all(pattern="                        ")
+
+attach(newtbl)
+c1<-c(X1[1:7])
+c2<-c(X2[1:7])
+final<-cbind(c1,c2)
+print(final)
+
+```
